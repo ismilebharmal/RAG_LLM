@@ -27,7 +27,7 @@ def load_and_split_pdf(pdf_path: str):
     split_tup = os.path.splitext(pdf_path)
     loader = PyPDFLoader(file_path=pdf_path)
     documents = loader.load()
-    splitter = CharacterTextSplitter(chunk_size=2000, chunk_overlap=500)
+    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_documents(documents)
     return chunks
 
@@ -65,6 +65,8 @@ def load_vector_stor_for_llm(query: str) -> str:
     # Initialize Chroma vectorstore with the embedding function
     vectordb = Chroma(embedding_function=OpenAIEmbeddings(model="text-embedding-3-small"), persist_directory='some_data/chroma_db_2')
     base_retriver = vectordb.as_retriever()
+    rerive= vectordb.similarity_search_with_relevance_scores(query, k=8)
+    print("rerive:",rerive)
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100, separator=". ")
     redundant_filter = EmbeddingsRedundantFilter(embeddings=OpenAIEmbeddings(model="text-embedding-3-small"))
     relevant_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(model="text-embedding-3-small"), similarity_threshold=0)
