@@ -1,4 +1,6 @@
 import os
+from typing import Tuple, Any
+
 from dotenv import load_dotenv
 from langgraph.graph import END, StateGraph
 from langchain_community.vectorstores import Chroma
@@ -27,7 +29,7 @@ def load_and_split_pdf(pdf_path: str):
     split_tup = os.path.splitext(pdf_path)
     loader = PyPDFLoader(file_path=pdf_path)
     documents = loader.load()
-    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    splitter = CharacterTextSplitter(chunk_size=1133, chunk_overlap=200)
     chunks = splitter.split_documents(documents)
     return chunks
 
@@ -61,13 +63,13 @@ def get_llm(model_name: str, temperature: float = 0):
         raise ValueError(f"Unknown model: {model_name}")
 
 
-def load_vector_stor_for_llm(query: str) -> str:
+def load_vector_stor_for_llm(query: str) -> tuple[Any, Any, Any,Any]:
     # Initialize Chroma vectorstore with the embedding function
     vectordb = Chroma(embedding_function=OpenAIEmbeddings(model="text-embedding-3-small"), persist_directory='some_data/chroma_db_2')
     base_retriver = vectordb.as_retriever()
-    rerive= vectordb.similarity_search_with_relevance_scores(query, k=8)
-    print("rerive:",rerive)
-    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100, separator=". ")
+    retrive= vectordb.similarity_search_with_relevance_scores(query, k=8)
+    print("rerive:",retrive)
+    splitter = CharacterTextSplitter(chunk_size=650, chunk_overlap=50, separator=". ")
     redundant_filter = EmbeddingsRedundantFilter(embeddings=OpenAIEmbeddings(model="text-embedding-3-small"))
     relevant_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(model="text-embedding-3-small"), similarity_threshold=0)
     pipeline_compressor = DocumentCompressorPipeline(
@@ -78,23 +80,31 @@ def load_vector_stor_for_llm(query: str) -> str:
     # Find the best page from the retrieved documents
     highest_query_similarity_score,highest_page_content,highest_page_metadata = get_best_page(retrive_data)
 
-    return  highest_query_similarity_score,highest_page_content,highest_page_metadata
+    return  highest_query_similarity_score,highest_page_content,highest_page_metadata,retrive
 
 
 prompt = PromptTemplate(
     input_variables=["query", "docs"],
     template="""
-        You are a helpful assistant that that can answer questions about given docs.
-
-        Answer the following question: {query}
-        By searching the following transcript: {docs}
-
-        Only use the relevent  information from the transcript to answer the question.
-        Note that the asnwer should not be hallucinate , it should be excatly from the transcript only.
-
-        If you feel like you don't have enough information to answer the question, say "I don't know".
+        You are a helpful AI code assistant with expertise in LLM AI Cybersecurity and Governance."
+                    " Use the following docs to produce a concise code solution to the user question.\n\n
+                    question: {query}\n\n DOCS: {docs}
         """,
 )
+    # prompt = PromptTemplate(
+#     input_variables=["query", "docs"],
+#     template="""
+#         You are a helpful assistant that that can answer questions about given docs.
+#
+#         Answer the following question: {query}
+#         By searching the following transcript: {docs}
+#
+#         Only use the relevent  information from the transcript to answer the question.
+#         Note that the asnwer should not be hallucinate , it should be excatly from the transcript only.
+#
+#         If you feel like you don't have enough information to answer the question, say "I don't know".
+#         """,
+# )
 openLLM = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
 
 def store_chunks_in_vector_store(chunks: list) -> None:
@@ -143,7 +153,7 @@ def retrival_node(state: State):
     try:
         chunks = load_and_split_pdf("app/some_data/igor.pdf")
         store_chunks_in_vector_store(chunks)
-        highest_query_similarity_score, highest_page_content, highest_page_metadata = load_vector_stor_for_llm(state["question"])
+        highest_query_similarity_score, highest_page_content, highest_page_metadata,retrive = load_vector_stor_for_llm(state["question"])
         print("highest_query_similarity_score", highest_query_similarity_score)
         print("highest_page_content", highest_page_content)
         print("highest_page_metadata", highest_page_metadata)
@@ -151,7 +161,9 @@ def retrival_node(state: State):
         data={
             "highest_query_similarity_score":highest_query_similarity_score,
             "highest_page_content":highest_page_content,
-            "highest_page_metadata":highest_page_metadata
+            "highest_page_metadata":highest_page_metadata,
+            "meta_response":retrive
+
         }
         return {'retrive_data':data}
     except Exception as e:
